@@ -3,7 +3,7 @@ module Main where
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Control.Exception
-import Control.Monad(liftM2)
+import Control.Monad
 
 data Ctx = Ctx Connection
 
@@ -17,11 +17,22 @@ failure e = return $ Left $ "Upgrade aborted: " ++ show e
 
 newtype SQLUpgrade a = SQLUpgrade { runSQLUpgrade :: Ctx -> IO a }
 
+type TableName = String
+
+newtype TableOp a = TableOp { runTableOp :: TableName -> SQLUpgrade a }
+
 instance Monad SQLUpgrade where
     u >>= f = SQLUpgrade $ \ ctx -> do a <- runSQLUpgrade u ctx
                                        runSQLUpgrade (f a) ctx
 
     return x = SQLUpgrade $ \ _ -> return x
+
+instance Monad TableOp where
+    u >>= f = TableOp $ \tn -> do 
+        a <- runTableOp u tn
+        runTableOp (f a) tn
+
+    return x = TableOp $ \_ -> return x
 
 sql :: String -> SQLUpgrade DBResult
 sql q = SQLUpgrade $ \ (Ctx c) -> (run c q [] >> success) `catchSql` failure
@@ -31,7 +42,13 @@ hasTable tableName =
     SQLUpgrade $ \ (Ctx c) -> do
         tables <- getTables c
         return $ tableName `elem` tables
-         
+
+withTable :: TableName -> TableOp a -> SQLUpgrade a
+withTable tn ops = SQLUpgrade $ runSQLUpgrade (runTableOp ops tn) 
+    
+addColumn :: String -> TableOp DBResult
+addColumn cn = TableOp $ \ tn ->  
+    sql $ "alter table " ++ tn ++ " add column " ++ cn ++ " VARCHAR(75)"
 
 (∧) :: SQLUpgrade DBResult -> SQLUpgrade DBResult -> SQLUpgrade DBResult
 u ∧ v = SQLUpgrade $ \ ctx -> do a <- runSQLUpgrade u ctx
@@ -44,6 +61,7 @@ u ∨ v = SQLUpgrade $ \ ctx -> do a <- runSQLUpgrade u ctx
                                  case a of
                                    Left _ -> runSQLUpgrade v ctx
                                    Right () -> success
+
 when :: Bool -> SQLUpgrade DBResult -> SQLUpgrade DBResult
 when b next = SQLUpgrade $ \ ctx -> 
     if b 
@@ -53,10 +71,14 @@ when b next = SQLUpgrade $ \ ctx ->
 upgrade :: SQLUpgrade DBResult
 upgrade = do
     sql "CREATE TABLE Doc (id INTEGER NOT NULL, title VARCHAR(75), data BLOB)"
-    b <- hasTable "Doc"
-    when b $ do 
-        sql "ALTER TABLE Doc ADD COLUMN fileName VARCHAR(75)"
-        sql "UPDATE Doc SET fileName = title"    
+    withTable "Doc" $ do
+        addColumn "fileName"
+        addColumn "other"
+
+--    b <- hasTable "Doc"
+--    when b $ do 
+--        sql "ALTER TABLE Doc ADD COLUMN fileName VARCHAR(75)"
+--        sql "UPDATE Doc SET fileName = title"    
     sql "CREATE TABLE Otra (id INTEGER NOT NULL, title VARCHAR(75), data BLOB)"
 
 main :: IO ()
