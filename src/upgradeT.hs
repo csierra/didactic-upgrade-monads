@@ -45,5 +45,6 @@ upgrade = do
             addColumn "DOC" "UUID" "VARCHAR(75)"
 
 main :: IO ()
-main = bracket (connectSqlite3 "upgrade.db") disconnect runUpgrade
-    where runUpgrade = void . (execStateT upgrade)
+main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
+    where close c = commit c >> disconnect c
+          runUpgrade = void . (execStateT upgrade)
