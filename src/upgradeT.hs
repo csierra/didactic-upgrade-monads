@@ -6,6 +6,7 @@ import Control.Exception
 import Control.Monad.State
 import Database.HDBC
 import Database.HDBC.Sqlite3
+import Text.Printf
 
 type DB = StateT Connection IO ()
 
@@ -31,11 +32,11 @@ whenC p cmd = do b <- getDB p
 tableExists :: String -> DBCmd Bool
 tableExists tab =
     query (\xs -> length xs == 1) $
-              "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '" ++ tab ++ "'"
+              printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
 
 addColumn :: String -> String -> String -> DBCmd ()
 addColumn tab col typ =
-    DBCmd $ sql $ "ALTER TABLE " ++ tab ++ " ADD COLUMN " ++ col ++ " " ++ typ
+    DBCmd $ sql $ printf "ALTER TABLE %s ADD COLUMN %s %s" tab col typ
 
 upgrade :: DB
 upgrade = do
@@ -45,4 +46,4 @@ upgrade = do
 
 main :: IO ()
 main = bracket (connectSqlite3 "upgrade.db") disconnect runUpgrade
-    where runUpgrade c = do execStateT upgrade c; disconnect c
+    where runUpgrade = void . (execStateT upgrade)
