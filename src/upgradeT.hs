@@ -8,9 +8,11 @@ import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 
-type DB c m = ReaderT c m ()
+data Ctx c  = Ctx { getConn :: c }
 
-newtype DBCmd c m a = DBCmd { getDB :: ReaderT c m a  }
+type DB c m = ReaderT (Ctx c) m ()
+
+newtype DBCmd c m a = DBCmd { getDB :: ReaderT (Ctx c) m a  }
 
 instance Monad m' => Monad (DBCmd c m') where
     m >>= f = DBCmd $ getDB m >>= getDB . f
@@ -18,13 +20,13 @@ instance Monad m' => Monad (DBCmd c m') where
 
 sql :: String -> DB Connection IO
 sql q = do c <- ask
-           liftIO $ run c q []
+           liftIO $ run (getConn c) q []
            return ()
 
 query :: ([[SqlValue]] -> a) -> String -> DBCmd Connection IO a
 query f q =
     DBCmd $ do c <- ask
-               r <- liftIO $ quickQuery c q []
+               r <- liftIO $ quickQuery (getConn c) q []
                return $ f r
 
 whenC :: DBCmd Connection IO Bool -> DBCmd Connection IO () -> DB Connection IO
@@ -49,4 +51,4 @@ upgrade = do
 main :: IO ()
 main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
     where close c = commit c >> disconnect c
-          runUpgrade = void . (runReaderT upgrade)
+          runUpgrade = void . (runReaderT upgrade) . Ctx
