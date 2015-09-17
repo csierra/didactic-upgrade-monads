@@ -3,25 +3,25 @@
 --
 
 import Control.Exception
-import Control.Monad.State
+import Control.Monad.Reader
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 
-type DB = StateT Connection IO ()
+type DB = ReaderT Connection IO ()
 
-newtype DBCmd a = DBCmd { getDB :: StateT Connection IO a  }
+newtype DBCmd a = DBCmd { getDB :: ReaderT Connection IO a  }
 
 instance Monad DBCmd where
     m >>= f  = DBCmd $ getDB m >>= getDB . f
     return x = DBCmd $ return x
 
 sql :: String -> DB
-sql q = do c <- get; liftIO $ run c q [] >> return ()
+sql q = do c <- ask; liftIO $ run c q [] >> return ()
 
 query :: ([[SqlValue]] -> a) -> String -> DBCmd a
 query f q =
-    DBCmd $ do c <- get
+    DBCmd $ do c <- ask
                r <- liftIO $ quickQuery c q []
                return $ f r
 
@@ -47,4 +47,4 @@ upgrade = do
 main :: IO ()
 main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
     where close c = commit c >> disconnect c
-          runUpgrade = void . (execStateT upgrade)
+          runUpgrade = void . (runReaderT upgrade)
