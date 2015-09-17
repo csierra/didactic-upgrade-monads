@@ -8,39 +8,39 @@ import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 
-type DB = ReaderT Connection IO ()
+type DB m = ReaderT Connection m ()
 
-newtype DBCmd a = DBCmd { getDB :: ReaderT Connection IO a  }
+newtype DBCmd m a = DBCmd { getDB :: ReaderT Connection m a  }
 
-instance Monad DBCmd where
+instance Monad t => Monad (DBCmd t) where
     m >>= f = DBCmd $ getDB m >>= getDB . f
     return  = DBCmd . return
 
-sql :: String -> DB
+sql :: String -> DB IO
 sql q = do c <- ask
            liftIO $ run c q []
            return ()
 
-query :: ([[SqlValue]] -> a) -> String -> DBCmd a
+query :: ([[SqlValue]] -> a) -> String -> DBCmd IO a
 query f q =
     DBCmd $ do c <- ask
                r <- liftIO $ quickQuery c q []
                return $ f r
 
-whenC :: DBCmd Bool -> DBCmd () -> DB
+whenC :: DBCmd IO Bool -> DBCmd IO () -> DB IO
 whenC p cmd = do b <- getDB p
                  when b $ getDB cmd
 
-tableExists :: String -> DBCmd Bool
+tableExists :: String -> DBCmd IO Bool
 tableExists tab =
     query (\xs -> length xs == 1) $
               printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
 
-addColumn :: String -> String -> String -> DBCmd ()
+addColumn :: String -> String -> String -> DBCmd IO ()
 addColumn tab col typ =
     DBCmd $ sql $ printf "ALTER TABLE %s ADD COLUMN %s %s" tab col typ
 
-upgrade :: DB
+upgrade :: DB IO
 upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
   whenC (tableExists "DOC") $ do
