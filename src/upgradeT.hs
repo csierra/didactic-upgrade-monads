@@ -13,11 +13,13 @@ type DB = ReaderT Connection IO ()
 newtype DBCmd a = DBCmd { getDB :: ReaderT Connection IO a  }
 
 instance Monad DBCmd where
-    m >>= f  = DBCmd $ getDB m >>= getDB . f
-    return x = DBCmd $ return x
+    m >>= f = DBCmd $ getDB m >>= getDB . f
+    return  = DBCmd . return
 
 sql :: String -> DB
-sql q = do c <- ask; liftIO $ run c q [] >> return ()
+sql q = do c <- ask
+           liftIO $ run c q []
+           return ()
 
 query :: ([[SqlValue]] -> a) -> String -> DBCmd a
 query f q =
