@@ -32,6 +32,9 @@ instance (Monad m') => Applicative (DBCmd c b m') where
     pure  = return
     (<*>) = ap
 
+type Upgrade = forall c b m. Monad m => DB c b m
+type UpgradeCommand a = forall c b m. Monad m => DBCmd c b m a
+
 sql :: Monad m => String -> DB c b m
 sql q = do c <- ask
            lift $ (runDDL c) (getConn c) q
@@ -42,20 +45,20 @@ query f q =
                r <- lift $ (runDQL c) (getConn c) q
                return $ f r
 
-whenC :: Monad m => DBCmd c b m Bool -> DBCmd c b m () -> DB c b m
+whenC :: UpgradeCommand Bool -> UpgradeCommand () -> Upgrade
 whenC p cmd = do b <- getDB p
                  when b $ getDB cmd
 
-tableExists :: Monad m => String -> DBCmd c b m Bool
+tableExists :: String -> UpgradeCommand Bool
 tableExists tab =
     query (\xs -> length xs == 1) $
               printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
 
-addColumn :: Monad m => String -> String -> String -> DBCmd c b m ()
+addColumn :: String -> String -> String -> UpgradeCommand ()
 addColumn tab col typ =
     DBCmd $ sql $ printf "ALTER TABLE %s ADD COLUMN %s %s" tab col typ
 
-upgrade :: Monad m => DB c b m
+upgrade :: Upgrade
 upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
   whenC (tableExists "DOC") $ do
