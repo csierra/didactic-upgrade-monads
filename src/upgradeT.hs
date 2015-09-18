@@ -11,37 +11,36 @@ import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 
-data Ctx c b m = Ctx { getConn :: c
-                     , runDDL :: c -> String -> m ()
-                     , runDQL :: c -> String -> m [b]
-                     }
+data Ctx b m = Ctx { runDDL :: String -> m ()
+                   , runDQL :: String -> m [b]
+                   }
 
-type DB c b m = ReaderT (Ctx c b m) m ()
+type DB b m = ReaderT (Ctx b m) m ()
 
-newtype DBCmd c b m a = DBCmd { getDB :: ReaderT (Ctx c b m) m a  }
+newtype DBCmd b m a = DBCmd { getDB :: ReaderT (Ctx b m) m a  }
 
-instance Monad m' => Monad (DBCmd c b m') where
+instance Monad m' => Monad (DBCmd b m') where
     m >>= f = DBCmd $ getDB m >>= getDB . f
     return  = DBCmd . return
 
-instance (Monad m') => Functor (DBCmd c b m') where
+instance (Monad m') => Functor (DBCmd b m') where
     fmap = liftM
 
-instance (Monad m') => Applicative (DBCmd c b m') where
+instance (Monad m') => Applicative (DBCmd b m') where
     pure  = return
     (<*>) = ap
 
-type Upgrade = forall c b m. Monad m => DB c b m
-type UpgradeCommand a = forall c b m. Monad m => DBCmd c b m a
+type Upgrade = forall b m. Monad m => DB b m
+type UpgradeCommand a = forall b m. Monad m => DBCmd b m a
 
 sql :: String -> Upgrade
 sql q = do c <- ask
-           lift $ runDDL c (getConn c) q
+           lift $ runDDL c q
 
-query :: Monad m => ([b] -> a) -> String -> DBCmd c b m a
+query :: Monad m => ([b] -> a) -> String -> DBCmd b m a
 query f q =
     DBCmd $ do c <- ask
-               r <- lift $ runDQL c (getConn c) q
+               r <- lift $ runDQL c q
                return $ f r
 
 whenC :: UpgradeCommand Bool -> UpgradeCommand () -> Upgrade
@@ -67,7 +66,6 @@ main :: IO ()
 main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
     where close c = commit c >> disconnect c
           runUpgrade = void . runReaderT upgrade . createCtx
-          createCtx c = Ctx { getConn = c
-                            , runDDL  = \c q -> void $ run c q []
-                            , runDQL  = \c q -> quickQuery c q []
+          createCtx c = Ctx { runDDL  = \q -> void $ run c q []
+                            , runDQL  = \q -> quickQuery c q []
                             }
