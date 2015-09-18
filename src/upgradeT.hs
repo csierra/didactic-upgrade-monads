@@ -35,14 +35,14 @@ instance (Monad m') => Applicative (DBCmd c b m') where
 type Upgrade = forall c b m. Monad m => DB c b m
 type UpgradeCommand a = forall c b m. Monad m => DBCmd c b m a
 
-sql :: Monad m => String -> DB c b m
+sql :: String -> Upgrade
 sql q = do c <- ask
-           lift $ (runDDL c) (getConn c) q
+           lift $ runDDL c (getConn c) q
 
 query :: Monad m => ([b] -> a) -> String -> DBCmd c b m a
 query f q =
     DBCmd $ do c <- ask
-               r <- lift $ (runDQL c) (getConn c) q
+               r <- lift $ runDQL c (getConn c) q
                return $ f r
 
 whenC :: UpgradeCommand Bool -> UpgradeCommand () -> Upgrade
@@ -61,14 +61,14 @@ addColumn tab col typ =
 upgrade :: Upgrade
 upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
-  whenC (tableExists "DOC") $ do
+  whenC (tableExists "DOC") $ 
             addColumn "DOC" "UUID" "VARCHAR(75)"
 
 main :: IO ()
 main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
     where close c = commit c >> disconnect c
-          runUpgrade = void . (runReaderT upgrade) . createCtx
+          runUpgrade = void . runReaderT upgrade . createCtx
           createCtx c = Ctx { getConn = c
-                            , runDDL  = \c q -> run c q [] >> return ()
+                            , runDDL  = \c q -> void $ run c q []
                             , runDQL  = \c q -> quickQuery c q []
                             }
