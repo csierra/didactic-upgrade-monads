@@ -9,7 +9,8 @@ import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 import Control.Applicative (Applicative(..))
-import Control.Monad       (liftM, ap)
+import Control.Monad       (liftM, ap, when)
+import Data.Convertible.Base
  
 
 data Ctx c b m = Ctx { getConn :: c
@@ -17,48 +18,33 @@ data Ctx c b m = Ctx { getConn :: c
                      , runDQL :: c -> String -> m [b]
                      }
 
-type DB c b m = ReaderT (Ctx c b m) m ()
+type DBCmd a = forall c b m. (Monad m) => ReaderT (Ctx c b m) m a
 
-newtype DBCmd c b m a = DBCmd { getDB :: ReaderT (Ctx c b m) m a  }
+type DB = DBCmd ()
 
-instance Monad m' => Monad (DBCmd c b m') where
-    m >>= f = DBCmd $ getDB m >>= getDB . f
-    return  = DBCmd . return
+sql :: String -> DB
+sql q = do 
+    c <- ask
+    lift $ runDDL c (getConn c) q
 
-instance (Monad m') => Functor (DBCmd c b m') where
-    fmap = liftM
- 
-instance (Monad m') => Applicative (DBCmd c b m') where
-    pure  = return
-    (<*>) = ap
+qr q = do 
+    c <- ask
+    lift $ runDQL c (getConn c) q
 
-type Upgrade = forall c b m. Monad m => DB c b m
-type UpgradeCommand a = forall c b m. Monad m => DBCmd c b m a
+whenC :: DBCmd Bool -> DBCmd () -> DB
+whenC p cmd = p >>= \x -> when x cmd
+    
 
-sql :: String -> Upgrade
-sql q = do c <- ask
-           lift $ runDDL c (getConn c) q
+tableExists :: String -> DBCmd Bool
+tableExists tab = do
+    tables <- qr $ printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
+    return $ length tables == 1
 
-query :: Monad m => ([b] -> a) -> String -> DBCmd c b m a
-query f q =
-    DBCmd $ do c <- ask
-               r <- lift $ runDQL c (getConn c) q
-               return $ f r
-
-whenC :: UpgradeCommand Bool -> UpgradeCommand () -> Upgrade
-whenC p cmd = do b <- getDB p
-                 when b $ getDB cmd
-
-tableExists :: String -> UpgradeCommand Bool
-tableExists tab =
-    query (\xs -> length xs == 1) $
-              printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
-
-addColumn :: String -> String -> String -> UpgradeCommand ()
+addColumn :: String -> String -> String -> DBCmd ()
 addColumn tab col typ =
-    DBCmd $ sql $ printf "ALTER TABLE %s ADD COLUMN %s %s" tab col typ
+    sql $ printf "ALTER TABLE %s ADD COLUMN %s %s" tab col typ
 
-upgrade :: Upgrade
+upgrade :: DB
 upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
   whenC (tableExists "DOC") $ 
