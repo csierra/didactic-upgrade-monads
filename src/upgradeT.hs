@@ -7,6 +7,9 @@ import Control.Monad.Reader
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
+import Control.Applicative (Applicative(..))
+import Control.Monad       (liftM, ap)
+ 
 
 data Ctx c b m = Ctx { getConn :: c
                      , runDDL :: c -> String -> m ()
@@ -20,6 +23,13 @@ newtype DBCmd c b m a = DBCmd { getDB :: ReaderT (Ctx c b m) m a  }
 instance Monad m' => Monad (DBCmd c b m') where
     m >>= f = DBCmd $ getDB m >>= getDB . f
     return  = DBCmd . return
+
+instance (Monad m') => Functor (DBCmd c b m') where
+    fmap = liftM
+ 
+instance (Monad m') => Applicative (DBCmd c b m') where
+    pure  = return
+    (<*>) = ap
 
 sql :: Monad m => String -> DB c b m
 sql q = do c <- ask
