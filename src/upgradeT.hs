@@ -1,3 +1,4 @@
+--{-# LANGUAGE ExistentialQuantification, RankNTypes #-}
 --
 -- Simple example using the StateT monad transformer.
 --
