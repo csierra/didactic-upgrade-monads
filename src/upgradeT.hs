@@ -8,13 +8,13 @@ import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 
-data Ctx c b = Ctx { getConn :: c
-                   , runDDL :: c -> String -> IO ()
-                   , runDQL :: c -> String -> IO [b] }
+data Ctx c b m = Ctx { getConn :: c
+                     , runDDL :: c -> String -> m ()
+                     , runDQL :: c -> String -> m [b] }
 
-type DB c b m = ReaderT (Ctx c b) m ()
+type DB c b m = ReaderT (Ctx c b m) m ()
 
-newtype DBCmd c b m a = DBCmd { getDB :: ReaderT (Ctx c b) m a  }
+newtype DBCmd c b m a = DBCmd { getDB :: ReaderT (Ctx c b m) m a  }
 
 instance Monad m' => Monad (DBCmd c b m') where
     m >>= f = DBCmd $ getDB m >>= getDB . f
