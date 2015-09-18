@@ -1,6 +1,6 @@
 --{-# LANGUAGE ExistentialQuantification, RankNTypes #-}
 --
--- Simple example using the StateT monad transformer.
+-- Simple example using the ReaderT monad transformer.
 --
 
 import Control.Applicative (Applicative(..))
@@ -11,33 +11,33 @@ import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
 
-data Ctx b m = Ctx { runDDL :: String -> m ()
-                   , runDQL :: String -> m [b]
+data Ctx m v = Ctx { runDDL :: String -> m ()
+                   , runDQL :: String -> m [v]
                    }
 
-type DB b m = ReaderT (Ctx b m) m ()
+type DB m v = ReaderT (Ctx m v) m ()
 
-newtype DBCmd b m a = DBCmd { getDB :: ReaderT (Ctx b m) m a  }
+newtype DBCmd m v a = DBCmd { getDB :: ReaderT (Ctx m v) m a  }
 
-instance Monad m' => Monad (DBCmd b m') where
+instance Monad m' => Monad (DBCmd m' v) where
     m >>= f = DBCmd $ getDB m >>= getDB . f
     return  = DBCmd . return
 
-instance (Monad m') => Functor (DBCmd b m') where
+instance (Monad m) => Functor (DBCmd m v) where
     fmap = liftM
 
-instance (Monad m') => Applicative (DBCmd b m') where
+instance (Monad m) => Applicative (DBCmd m v) where
     pure  = return
     (<*>) = ap
 
-type Upgrade = forall b m. Monad m => DB b m
-type UpgradeCommand a = forall b m. Monad m => DBCmd b m a
+type Upgrade = forall m v . Monad m => DB m v
+type UpgradeCommand a = forall m v . Monad m => DBCmd m v a
 
 sql :: String -> Upgrade
 sql q = do c <- ask
            lift $ runDDL c q
 
-query :: Monad m => ([b] -> a) -> String -> DBCmd b m a
+query :: Monad m => ([v] -> a) -> String -> DBCmd m v a
 query f q =
     DBCmd $ do c <- ask
                r <- lift $ runDQL c q
