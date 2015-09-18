@@ -3,14 +3,13 @@
 -- Simple example using the StateT monad transformer.
 --
 
+import Control.Applicative (Applicative(..))
 import Control.Exception
+import Control.Monad       (liftM, ap)
 import Control.Monad.Reader
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Text.Printf
-import Control.Applicative (Applicative(..))
-import Control.Monad       (liftM, ap)
- 
 
 data Ctx c b m = Ctx { getConn :: c
                      , runDDL :: c -> String -> m ()
@@ -27,7 +26,7 @@ instance Monad m' => Monad (DBCmd c b m') where
 
 instance (Monad m') => Functor (DBCmd c b m') where
     fmap = liftM
- 
+
 instance (Monad m') => Applicative (DBCmd c b m') where
     pure  = return
     (<*>) = ap
@@ -61,7 +60,7 @@ addColumn tab col typ =
 upgrade :: Upgrade
 upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
-  whenC (tableExists "DOC") $ 
+  whenC (tableExists "DOC") $
             addColumn "DOC" "UUID" "VARCHAR(75)"
 
 main :: IO ()
