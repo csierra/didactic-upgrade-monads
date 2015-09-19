@@ -1,4 +1,4 @@
---{-# LANGUAGE ExistentialQuantification, RankNTypes #-}
+--{-# LANGUAGE ExistentialQuantification, RankNTypes, MultiParamTypeClasses #-}
 --
 -- Simple example using the StateT monad transformer.
 --
@@ -13,21 +13,27 @@ import Control.Monad       (liftM, ap, when)
 import Data.Convertible.Base
  
 
-data Ctx c b m = Ctx { getConn :: c
+data Ctx c m = Ctx { getConn :: c
                      , runDDL :: c -> String -> m ()
-                     , runDQL :: c -> String -> m [b]
+                     , runDQL :: c -> String -> m [[SqlValue]]
                      }
 
-type DBCmd a = forall c b m. (Monad m) => ReaderT (Ctx c b m) m a
+type DBCmd a = forall c m. (Monad m) => ReaderT (Ctx c m) m a
+
+data Value a = V a
+
+instance Convertible SqlValue (Value a) where 
+    safeConvert s = Right $ convert s
 
 sql :: String -> DBCmd ()
 sql q = do 
     c <- ask
     lift $ runDDL c (getConn c) q
 
-query q = do 
+query :: String -> DBCmd [[Value a]]
+query q = do
     c <- ask
-    lift $ runDQL c (getConn c) q
+    lift $ runDQL c (getConn c) q >>= \x -> return (map (map fromSql) x)
 
 whenC :: DBCmd Bool -> DBCmd () -> DBCmd ()
 whenC p cmd = p >>= \x -> when x cmd

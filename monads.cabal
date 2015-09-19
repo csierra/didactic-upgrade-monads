@@ -18,7 +18,7 @@ cabal-version:       >=1.10
 executable monads
   main-is:             src/upgradeT.hs
   -- other-modules:       
-  default-extensions:    ExistentialQuantification,RankNTypes
+  default-extensions:    ExistentialQuantification,RankNTypes,MultiParamTypeClasses
   build-depends:       base > 4.6,convertible,mtl,directory,HDBC,HDBC-sqlite3
   -- hs-source-dirs:      
   default-language:    Haskell2010
