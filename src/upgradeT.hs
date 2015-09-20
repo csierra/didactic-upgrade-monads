@@ -20,20 +20,19 @@ data Ctx c m = Ctx { getConn :: c
 
 type DBCmd a = forall c m. (Monad m) => ReaderT (Ctx c m) m a
 
-data Value a = V a
+type Value = SqlValue 
+fromValue = fromSql
 
-instance Convertible SqlValue (Value a) where 
-    safeConvert s = Right $ convert s
 
 sql :: String -> DBCmd ()
 sql q = do 
     c <- ask
     lift $ runDDL c (getConn c) q
 
-query :: String -> DBCmd [[Value a]]
+query :: String -> DBCmd [[Value]]
 query q = do
     c <- ask
-    lift $ runDQL c (getConn c) q >>= \x -> return (map (map fromSql) x)
+    lift $ runDQL c (getConn c) q 
 
 whenC :: DBCmd Bool -> DBCmd () -> DBCmd ()
 whenC p cmd = p >>= \x -> when x cmd
@@ -53,11 +52,24 @@ upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
   whenC (tableExists "DOC") $ 
             addColumn "DOC" "UUID" "VARCHAR(75)"
+  sql "INSERT INTO DOC (ID, NAME, UUID) values (1, 'uno', 'UUID')"
+
+list :: DBCmd [Value]
+list = query "Select * from Doc" >>= \(x:xs) -> return x
+
+--test = connectSqlite3 "upgrade.db" >>= \c -> quickQuery c "select * from Doc" [] 
+test = bracket (connectSqlite3 "upgrade.db") close runUpgrade >>= \(x:xs) -> print ((fromValue x::Int) + 1)
+    where close c = commit c >> disconnect c
+          runUpgrade = runReaderT list . createCtx
+          createCtx c = Ctx { getConn = c
+                            , runDDL  = \c q -> void $ run c q []
+                            , runDQL  = \c q -> quickQuery c q []
+                            }
 
 main :: IO ()
-main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
+main = bracket (connectSqlite3 "upgrade.db") close runUpgrade 
     where close c = commit c >> disconnect c
-          runUpgrade = void . runReaderT upgrade . createCtx
+          runUpgrade = runReaderT upgrade . createCtx
           createCtx c = Ctx { getConn = c
                             , runDDL  = \c q -> void $ run c q []
                             , runDQL  = \c q -> quickQuery c q []
