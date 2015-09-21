@@ -1,6 +1,6 @@
 --{-# LANGUAGE ExistentialQuantification, RankNTypes, MultiParamTypeClasses #-}
 --
--- Simple example using the StateT monad transformer.
+-- Simple example using the ReaderT monad transformer.
 --
 
 import Control.Exception
@@ -13,56 +13,41 @@ import Control.Monad       (liftM, ap, when)
 import Data.Convertible.Base
 
 
-data Ctx m = Ctx { runDDL :: String -> m ()
-                 , runDQL :: String -> m [[SqlValue]]
-                 }
+data Ctx m v = Ctx { runDDL :: String -> m ()
+                   , runDQL :: String -> m [[v]]
+                   }
 
-type DBCmd a = forall m. (Monad m) => ReaderT (Ctx m) m a
+type DBCmd a v =
+    forall m . (Functor m, Monad m) => ReaderT (Ctx m v) m a
 
-type Value = SqlValue
-fromValue = fromSql
+sql :: String -> DBCmd () v
+sql q = do c <- ask
+           void . lift $ runDDL c q
 
+query :: String -> DBCmd [[v]] v
+query q = do c <- ask
+             lift $ runDQL c q
 
-sql :: String -> DBCmd ()
-sql q = do
-    c <- ask
-    lift $ runDDL c q
+whenC :: DBCmd Bool v -> DBCmd () v -> DBCmd () v
+whenC p cmd = do x <- p
+                 when x cmd
 
-query :: String -> DBCmd [[Value]]
-query q = do
-    c <- ask
-    lift $ runDQL c q
+tableExists :: String -> DBCmd Bool v
+tableExists tab = fmap isNonEmpty $ query sqlQuery
+    where sqlQuery =
+              printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
+          isNonEmpty xs = length xs > 0
 
-whenC :: DBCmd Bool -> DBCmd () -> DBCmd ()
-whenC p cmd = p >>= \x -> when x cmd
-
-
-tableExists :: String -> DBCmd Bool
-tableExists tab = do
-    tables <- query $ printf "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '%s'" tab
-    return $ length tables == 1
-
-addColumn :: String -> String -> String -> DBCmd ()
+addColumn :: String -> String -> String -> DBCmd () v
 addColumn tab col typ =
     sql $ printf "ALTER TABLE %s ADD COLUMN %s %s" tab col typ
 
-upgrade :: DBCmd ()
+upgrade :: DBCmd () v
 upgrade = do
   sql "CREATE TABLE DOC (ID PRIMARY KEY, NAME VARCHAR(75) NOT NULL)"
   whenC (tableExists "DOC") $
-            addColumn "DOC" "UUID" "VARCHAR(75)"
+        addColumn "DOC" "UUID" "VARCHAR(75)"
   sql "INSERT INTO DOC (ID, NAME, UUID) values (1, 'uno', 'UUID')"
-
-list :: DBCmd [Value]
-list = query "Select * from Doc" >>= \(x:xs) -> return x
-
---test = connectSqlite3 "upgrade.db" >>= \c -> quickQuery c "select * from Doc" []
-test = bracket (connectSqlite3 "upgrade.db") close runUpgrade >>= \(x:xs) -> print ((fromValue x::Int) + 1)
-    where close c = commit c >> disconnect c
-          runUpgrade = runReaderT list . createCtx
-          createCtx c = Ctx { runDDL  = \q -> void $ run c q []
-                            , runDQL  = \q -> quickQuery c q []
-                            }
 
 main :: IO ()
 main = bracket (connectSqlite3 "upgrade.db") close runUpgrade
