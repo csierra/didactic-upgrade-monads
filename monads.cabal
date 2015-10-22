@@ -11,12 +11,12 @@ executable upgrade
   default-language:    Haskell2010
   hs-source-dirs:      src
   main-is:             upgradeT.hs
-  build-depends:       base > 4.6, convertible, mtl, directory, HDBC, HDBC-sqlite3
-  default-extensions:  ExistentialQuantification,RankNTypes,MultiParamTypeClasses
+  build-depends:       base > 4.6, convertible, mtl, directory, HDBC, HDBC-sqlite3, control-monad-free
+  default-extensions:  ExistentialQuantification,RankNTypes,MultiParamTypeClasses,DeriveFunctor
 
 library
   default-language:    Haskell2010
   hs-source-dirs:      src
   exposed-modules:     Upgrade.Core, Upgrade.DSL
-  default-extensions:  ExistentialQuantification,RankNTypes,MultiParamTypeClasses
-  build-depends:       base > 4.6, convertible, mtl, directory, HDBC, HDBC-sqlite3
+  default-extensions:  ExistentialQuantification,RankNTypes,MultiParamTypeClasses,DeriveFunctor
+  build-depends:       base > 4.6, convertible, mtl, directory, HDBC, HDBC-sqlite3, control-monad-free
